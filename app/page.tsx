@@ -614,6 +614,9 @@ export default function Home() {
   const healthScore = result?.advancedModules?.healthScore;
   const lifeEventSimulator = result?.advancedModules?.lifeEventSimulator ?? [];
   const mutualFundXRay = result?.advancedModules?.mutualFundXRay;
+  const isAiFallbackMode = aiMentorResult?.generatedBy === "fallback";
+  const isEmailFallbackMode =
+    emailExecution?.mode === "draft-only" || emailExecution?.provider === "fallback";
 
   function clearExecutionState() {
     setResult(null);
@@ -1702,6 +1705,27 @@ export default function Home() {
                           Generated via {aiMentorResult.generatedBy.toUpperCase()}
                         </span>
                       ) : null}
+                    </div>
+
+                    <div
+                      className={`mt-3 rounded-lg border px-3 py-2 ${
+                        isAiFallbackMode || isEmailFallbackMode
+                          ? "border-amber-200 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10"
+                          : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60"
+                      }`}
+                    >
+                      <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-600 dark:text-slate-300">
+                        Demo Mode vs Full Mode
+                      </p>
+                      <p className="mt-1 text-xs text-slate-700 dark:text-slate-200">
+                        AI Mentor: {aiMentorResult ? (isAiFallbackMode ? "Demo fallback" : "Full mode (OpenAI)") : "Not generated yet"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-700 dark:text-slate-200">
+                        Email execution: {emailExecution ? (isEmailFallbackMode ? "Draft-only fallback" : "Full mode (Resend send)") : "Not executed yet"}
+                      </p>
+                      <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+                        Full mode needs OPENAI_API_KEY, RESEND_API_KEY, and RESEND_FROM_EMAIL in local and deployment environments.
+                      </p>
                     </div>
 
                     <button

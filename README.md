@@ -64,6 +64,18 @@ Optional for full features:
 
 If Resend is not configured, Execute Fixes will remain in draft-only fallback mode by design.
 
+## Demo Mode vs Full Mode
+
+1. Demo mode (safe fallback):
+   1. Without `OPENAI_API_KEY`, AI Mentor still works using deterministic fallback guidance.
+   2. Without `RESEND_API_KEY`, Execute Fixes remains in draft-only mode and does not send emails.
+2. Full mode (live providers):
+   1. Set `OPENAI_API_KEY` to enable live OpenAI-generated mentor output.
+   2. Set `RESEND_API_KEY` and `RESEND_FROM_EMAIL` to enable live email delivery.
+3. Judge verification tip:
+   1. In the app, check the "Demo Mode vs Full Mode" panel under AI Mentor Layer.
+   2. It explicitly shows whether AI and email are running in fallback or full provider mode.
+
 ## Run Locally
 
 ```bash
