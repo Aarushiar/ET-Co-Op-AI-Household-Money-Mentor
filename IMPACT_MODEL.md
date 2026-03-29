@@ -33,6 +33,8 @@ Estimate business impact in three dimensions:
 4. Final review and action execution: 8 minutes
 5. Total assisted time: 50 minutes
 
+Assumption note: The current judge-facing build uses a deterministic UI success action for `Approve & Send to HR`; the 8-minute step models production-intent execution behavior including review and handoff.
+
 ### Financial recovery assumptions
 
 1. Average tax leakage identified per household: INR 60,000
