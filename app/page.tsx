@@ -986,8 +986,7 @@ export default function Home() {
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="sota-pill">ET Co-Op AI Mentor</span>
-              <span className="sota-pill">Prototype v1</span>
+              <span className="sota-pill">ET Co-Op Household Money Mentor</span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {isAuthenticated ? (
