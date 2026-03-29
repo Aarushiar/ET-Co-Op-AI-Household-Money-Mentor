@@ -1,5 +1,6 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 
 type StoredUser = {
@@ -13,8 +14,23 @@ type UsersFile = {
   users: StoredUser[];
 };
 
-const usersDirectory = path.join(process.cwd(), ".data");
-const usersFilePath = path.join(usersDirectory, "users.json");
+const USERS_FILE_NAME = "users.json";
+
+function getStorageCandidates(): string[] {
+  const configuredDirectory = process.env.USERS_DATA_DIR?.trim();
+  const defaultDirectories = [path.join(process.cwd(), ".data")];
+
+  if (process.env.VERCEL === "1") {
+    defaultDirectories.push(path.join(os.tmpdir(), "et-co-op-data"));
+  }
+
+  return configuredDirectory
+    ? [configuredDirectory, ...defaultDirectories]
+    : defaultDirectories;
+}
+
+const storageCandidates = getStorageCandidates();
+let resolvedUsersFilePath: string | null = null;
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -24,19 +40,36 @@ function hashPassword(password: string, salt: string): string {
   return scryptSync(password, salt, 64).toString("hex");
 }
 
-async function ensureUsersFile(): Promise<void> {
-  await fs.mkdir(usersDirectory, { recursive: true });
-
-  try {
-    await fs.access(usersFilePath);
-  } catch {
-    const empty: UsersFile = { users: [] };
-    await fs.writeFile(usersFilePath, JSON.stringify(empty, null, 2), "utf8");
+async function ensureUsersFile(): Promise<string> {
+  if (resolvedUsersFilePath) {
+    return resolvedUsersFilePath;
   }
+
+  const empty: UsersFile = { users: [] };
+
+  for (const directory of storageCandidates) {
+    try {
+      await fs.mkdir(directory, { recursive: true });
+      const candidateFilePath = path.join(directory, USERS_FILE_NAME);
+
+      try {
+        await fs.access(candidateFilePath);
+      } catch {
+        await fs.writeFile(candidateFilePath, JSON.stringify(empty, null, 2), "utf8");
+      }
+
+      resolvedUsersFilePath = candidateFilePath;
+      return candidateFilePath;
+    } catch {
+      // Try next writable candidate.
+    }
+  }
+
+  throw new Error("Unable to initialize user storage");
 }
 
 async function readUsersFile(): Promise<UsersFile> {
-  await ensureUsersFile();
+  const usersFilePath = await ensureUsersFile();
   const raw = await fs.readFile(usersFilePath, "utf8");
 
   try {
@@ -59,7 +92,7 @@ async function readUsersFile(): Promise<UsersFile> {
 }
 
 async function writeUsersFile(usersFile: UsersFile): Promise<void> {
-  await ensureUsersFile();
+  const usersFilePath = await ensureUsersFile();
   await fs.writeFile(usersFilePath, JSON.stringify(usersFile, null, 2), "utf8");
 }
 
