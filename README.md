@@ -1,9 +1,6 @@
 # ET Co-Op AI Household Money Mentor
 Live Demo: https://et-co-op.vercel.app
 
-Architecture Document: ./ARCHITECTURE.md
-
-Impact Model: ./IMPACT_MODEL.md
 
 ET Co-Op is a Next.js application for two-partner household financial planning. It combines deterministic tax optimization with an AI mentor layer, HR email draft generation, and an execution workflow for sending email actions.
 
