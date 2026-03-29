@@ -1,36 +1,153 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ET Co-Op AI Household Money Mentor
 
-## Getting Started
+ET Co-Op is a Next.js application for two-partner household financial planning. It combines deterministic tax optimization with an AI mentor layer, HR email draft generation, and an execution workflow for sending email actions.
 
-First, run the development server:
+## What This Project Does
+
+1. Auth flow with register, sign in, session check, and logout.
+2. Household optimization engine for tax leakage, regime recommendations, and ranked tax-saving actions.
+3. Advanced planning modules:
+   1. FIRE readiness projection.
+   2. Financial health score.
+   3. Life-event simulator (input-driven).
+   4. Mutual fund X-Ray.
+4. AI mentor output with plain-language explanation and HR email drafts.
+5. Execute Fixes flow to send emails via Resend, with safe draft-only fallback when email is not configured.
+
+## Tech Stack
+
+1. Next.js 16 (App Router, Turbopack)
+2. TypeScript
+3. React 19
+4. Tailwind CSS 4
+5. Zod (API payload validation)
+6. Vitest (unit and API route tests)
+7. OpenAI SDK (optional AI generation)
+8. Resend SDK (optional email sending)
+
+## Prerequisites
+
+1. Node.js 20 or newer
+2. npm 10 or newer
+3. Git
+
+## Setup
+
+### 1. Clone and install
+
+```bash
+git clone <YOUR_REPO_URL>
+cd et-co-op
+npm ci
+```
+
+Windows note: if PowerShell blocks npm scripts, run commands via `cmd /c npm ...`.
+
+### 2. Configure environment variables
+
+Copy the template and edit values:
+
+```bash
+copy .env.local.example .env.local
+```
+
+Required minimum for local app access:
+
+1. `AUTH_SESSION_SECRET` must be set to a strong random value.
+
+Optional for full features:
+
+1. `OPENAI_API_KEY` for AI responses.
+2. `RESEND_API_KEY` and `RESEND_FROM_EMAIL` for email sending.
+3. `DEMO_EMAIL_TO` or `PARTNER_A_EMAIL` and `PARTNER_B_EMAIL` for recipients.
+
+If Resend is not configured, Execute Fixes will remain in draft-only fallback mode by design.
+
+## Run Locally
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Quality Checks
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Run all checks before pushing:
 
-## Learn More
+```bash
+npm run lint
+npm run test
+npm run build
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Automated CI
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+GitHub Actions workflow is defined in `.github/workflows/ci.yml`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+On push and pull request, CI runs:
 
-## Deploy on Vercel
+1. `npm ci`
+2. `npm run lint`
+3. `npm run test`
+4. `npm run build`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## API Endpoints
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. `POST /api/auth/register`
+2. `POST /api/auth/login`
+3. `GET /api/auth/session`
+4. `POST /api/auth/logout`
+5. `POST /api/optimize`
+6. `POST /api/ai-mentor`
+7. `POST /api/execute-fixes`
+
+All non-auth business endpoints are protected by session auth and rate limiting.
+
+## Testing Coverage
+
+Current test suites include:
+
+1. Optimization engine deterministic behavior.
+2. API route tests for optimize, ai-mentor, and execute-fixes.
+3. Validation tests for invalid life-event payloads.
+4. Unauthorized and rate-limit behavior for API routes.
+
+## Repository Hygiene and Security Notes
+
+1. `.env*` is ignored. Do not commit `.env.local`.
+2. `.data/` is ignored. Do not commit local runtime user data.
+3. Keep API keys and secrets only in local or deployment environment settings.
+
+## Suggested Commit Convention
+
+To keep build process traceable in history, use grouped commits:
+
+1. `feat:` application features.
+2. `test:` test additions.
+3. `ci:` workflow or automation updates.
+4. `docs:` README and setup guidance.
+
+## Troubleshooting
+
+### npm ci fails with lockfile error
+
+Run from project root where `package-lock.json` exists:
+
+```bash
+cd et-co-op
+npm ci
+```
+
+### npm.ps1 blocked on Windows PowerShell
+
+Use cmd form:
+
+```bash
+cmd /c npm ci
+cmd /c npm run test
+```
+
+### Runtime overlay says MetaMask extension not found
+
+This is from a browser extension, not this app. Test in a clean browser profile or disable wallet extensions.
