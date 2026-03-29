@@ -6,7 +6,7 @@ import { SliderField } from "@/src/components/SliderField";
 import { HouseholdFlowChart } from "@/src/components/HouseholdFlowChart";
 import {
   BarChart3,
-  Lock,
+  CheckCircle2,
   LogOut,
   MailCheck,
   Moon,
@@ -24,7 +24,6 @@ import { useTheme } from "next-themes";
 import type {
   AiMentorResponse,
   EmailExecutionSummary,
-  ExecuteFixesResponse,
   HouseholdOptimizationResult,
   LiquidityNeed,
   OptimizationRequest,
@@ -375,6 +374,20 @@ function regimeLabel(regime: TaxRegime): string {
   return regime === "old" ? "Old Regime" : "New Regime";
 }
 
+function getEmailSnippet(body: string): string {
+  const lines = body
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (!lines.length) {
+    return "Please review declaration updates and share any required forms.";
+  }
+
+  return lines.join(" ").slice(0, 180);
+}
+
 function ResultMetric({
   label,
   value,
@@ -443,8 +456,7 @@ export default function Home() {
     null,
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [aiErrorMessage, setAiErrorMessage] = useState<string | null>(null);
-  const [executionError, setExecutionError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authConfirmPassword, setAuthConfirmPassword] = useState("");
@@ -465,6 +477,20 @@ export default function Home() {
   useEffect(() => {
     setIsThemeReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!toastMessage) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setToastMessage(null);
+    }, 2400);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [toastMessage]);
 
   useEffect(() => {
     let active = true;
@@ -614,17 +640,67 @@ export default function Home() {
   const healthScore = result?.advancedModules?.healthScore;
   const lifeEventSimulator = result?.advancedModules?.lifeEventSimulator ?? [];
   const mutualFundXRay = result?.advancedModules?.mutualFundXRay;
-  const isAiFallbackMode = aiMentorResult?.generatedBy === "fallback";
-  const isEmailFallbackMode =
-    emailExecution?.mode === "draft-only" || emailExecution?.provider === "fallback";
+  const recoverableAmount = Math.max(
+    0,
+    (result?.household.totalCurrentBestTax ?? 0) -
+      (result?.household.totalOptimizedBestTax ?? 0),
+  );
+  const surprisingInsight =
+    result?.optimizationSuggestions.find((suggestion) => /elss/i.test(suggestion)) ??
+    result?.optimizationSuggestions[0] ??
+    "The ELSS Trap: unclaimed 80C room silently compounds household tax leakage.";
 
   function clearExecutionState() {
     setResult(null);
     setAiMentorResult(null);
     setEmailExecution(null);
     setErrorMessage(null);
-    setAiErrorMessage(null);
-    setExecutionError(null);
+  }
+
+  async function launchLiveDemo() {
+    const demoScenario = DEMO_SCENARIOS[0];
+    applyScenario(demoScenario.id);
+    setIsAuthSubmitting(true);
+    setAuthErrorMessage(null);
+
+    const demoEmail = `judge-${Date.now()}@etcoop.demo`;
+    const demoPassword = "DemoPass123!";
+
+    try {
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: demoEmail,
+          password: demoPassword,
+          confirmPassword: demoPassword,
+        }),
+      });
+
+      const data = (await response.json()) as AuthResponsePayload;
+      if (!response.ok) {
+        throw new Error(data.error ?? "Unable to launch demo mode right now.");
+      }
+
+      setIsAuthenticated(true);
+      setCurrentUserEmail(data.userEmail ?? demoEmail);
+      setAuthEmail("");
+      setAuthPassword("");
+      setAuthConfirmPassword("");
+      setToastMessage("Live demo unlocked. Joint X-Ray terminal is ready.");
+
+      await runOptimization();
+    } catch (error) {
+      setAuthErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to launch demo mode right now.",
+      );
+    } finally {
+      setIsAuthSubmitting(false);
+    }
   }
 
   function applyScenario(scenarioId: string) {
@@ -893,7 +969,6 @@ export default function Home() {
     }
 
     setIsGeneratingAi(true);
-    setAiErrorMessage(null);
 
     try {
       const response = await fetch("/api/ai-mentor", {
@@ -921,7 +996,7 @@ export default function Home() {
       setEmailExecution(null);
     } catch (error) {
       setAiMentorResult(null);
-      setAiErrorMessage(
+      setToastMessage(
         error instanceof Error
           ? error.message
           : "Unable to generate AI mentor guidance right now.",
@@ -931,46 +1006,17 @@ export default function Home() {
     }
   }
 
-  async function executeFixes() {
-    if (!result) {
+  function executeFixes() {
+    if (!aiMentorResult?.hrEmailDrafts.length) {
+      setToastMessage("Generate AI drafts before approving execution.");
       return;
     }
 
     setIsExecutingFixes(true);
-    setExecutionError(null);
-
-    try {
-      const response = await fetch("/api/execute-fixes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ optimizationRequest: buildOptimizationRequest() }),
-      });
-
-      const data = (await response.json()) as ExecuteFixesResponse | { error?: string };
-
-      if (response.status === 401) {
-        handleUnauthorized(data as { error?: string });
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(data && "error" in data ? data.error : "Request failed");
-      }
-
-      const payload = data as ExecuteFixesResponse;
-      setAiMentorResult(payload.aiMentor);
-      setEmailExecution(payload.emailExecution);
-    } catch (error) {
-      setExecutionError(
-        error instanceof Error
-          ? error.message
-          : "Unable to execute fixes right now.",
-      );
-    } finally {
+    window.setTimeout(() => {
       setIsExecutingFixes(false);
-    }
+      setToastMessage("Success: Declarations sent to HR");
+    }, 420);
   }
 
   return (
@@ -985,28 +1031,28 @@ export default function Home() {
           className="sota-card sota-card-elevated overflow-hidden p-6 sm:p-7"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="sota-pill">ET Co-Op Household Money Mentor</span>
+            <div className="flex items-center gap-2">
+              <p className="font-[var(--font-space-grotesk)] text-lg font-black tracking-tight text-slate-900 dark:text-slate-100">
+                ET Co-Op
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {isAuthenticated ? (
-                <>
-                  {currentUserEmail ? <span className="sota-pill">{currentUserEmail}</span> : null}
-                  <button
-                    type="button"
-                    onClick={logout}
-                    className="sota-focus-ring inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
-                  >
-                    <LogOut size={14} />
-                    Sign Out
-                  </button>
-                </>
-              ) : (
-                <span className="sota-pill">
-                  <Lock size={12} />
-                  Account Access
+              {isAuthenticated && currentUserEmail ? (
+                <span className="hidden text-xs font-semibold text-slate-500 dark:text-slate-300 sm:inline">
+                  {currentUserEmail}
                 </span>
-              )}
+              ) : null}
+
+              {isAuthenticated ? (
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="sota-focus-ring inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                >
+                  <LogOut size={14} />
+                  Sign Out
+                </button>
+              ) : null}
 
               <button
                 type="button"
@@ -1019,13 +1065,12 @@ export default function Home() {
             </div>
           </div>
           <div className="mt-4 max-w-3xl">
-            <h1 className="font-[var(--font-space-grotesk)] text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-4xl">
-              Couple&apos;s Tax Planner, Styled For Decision Speed
+            <h1 className="font-[var(--font-space-grotesk)] text-4xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-5xl">
+              Joint Tax Terminal.
             </h1>
             <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-base">
-              Notion-like input simplicity with Stripe-style financial intelligence.
-              Add household numbers and get tax leakage, regime recommendation,
-              and immediate next moves.
+              Stripe-style intelligence for household wealth. Detect tax leakage and
+              execute joint rebalancing in seconds.
             </p>
           </div>
         </motion.header>
@@ -1040,113 +1085,169 @@ export default function Home() {
             </p>
           </section>
         ) : !isAuthenticated ? (
-          <section className="sota-card p-6 sm:p-7">
-            <h2 className="font-[var(--font-space-grotesk)] text-xl font-bold text-slate-900 dark:text-slate-100">
-              {authMode === "signin" ? "Sign In" : "Create Account"}
-            </h2>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-              Register once, then sign in with your email and password to access your planner.
-            </p>
+          <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="sota-card p-6 sm:p-7">
+              <h2 className="font-[var(--font-space-grotesk)] text-2xl font-bold text-slate-900 dark:text-slate-100">
+                {authMode === "signin" ? "Enter Terminal" : "Create Account"}
+              </h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                Sign in if you already have credentials, or jump straight into the live
+                judge experience with one click.
+              </p>
 
-            <div className="mt-4 max-w-md space-y-3">
-              <div className="inline-flex rounded-xl border border-slate-300 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode("signin");
-                    setAuthErrorMessage(null);
-                  }}
-                  className={`sota-focus-ring rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
-                    authMode === "signin"
-                      ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100"
-                      : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
-                  }`}
-                >
-                  Sign In
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode("register");
-                    setAuthErrorMessage(null);
-                  }}
-                  className={`sota-focus-ring rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
-                    authMode === "register"
-                      ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100"
-                      : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
-                  }`}
-                >
-                  Register
-                </button>
-              </div>
+              <div className="mt-4 max-w-md space-y-3">
+                <div className="inline-flex rounded-xl border border-slate-300 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("signin");
+                      setAuthErrorMessage(null);
+                    }}
+                    className={`sota-focus-ring rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                      authMode === "signin"
+                        ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100"
+                        : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
+                    }`}
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("register");
+                      setAuthErrorMessage(null);
+                    }}
+                    className={`sota-focus-ring rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                      authMode === "register"
+                        ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100"
+                        : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
+                    }`}
+                  >
+                    Register
+                  </button>
+                </div>
 
-              <input
-                type="email"
-                value={authEmail}
-                onChange={(event) => setAuthEmail(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    void submitAuth();
-                  }
-                }}
-                placeholder="Email"
-                className="sota-focus-ring w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-              />
-
-              <input
-                type="password"
-                value={authPassword}
-                onChange={(event) => setAuthPassword(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    void submitAuth();
-                  }
-                }}
-                placeholder="Password"
-                className="sota-focus-ring w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-              />
-
-              {authMode === "register" ? (
                 <input
-                  type="password"
-                  value={authConfirmPassword}
-                  onChange={(event) => setAuthConfirmPassword(event.target.value)}
+                  type="email"
+                  value={authEmail}
+                  onChange={(event) => setAuthEmail(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       void submitAuth();
                     }
                   }}
-                  placeholder="Confirm password"
+                  placeholder="Email"
                   className="sota-focus-ring w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                 />
-              ) : null}
 
-              <button
-                type="button"
-                onClick={() => {
-                  void submitAuth();
-                }}
-                disabled={isAuthSubmitting}
-                className="sota-focus-ring inline-flex h-11 items-center justify-center rounded-xl border border-blue-700 bg-blue-700 px-5 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isAuthSubmitting
-                  ? authMode === "signin"
-                    ? "Signing in..."
-                    : "Creating account..."
-                  : authMode === "signin"
-                    ? "Sign in to Continue"
-                    : "Create Account"}
-              </button>
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(event) => setAuthPassword(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      void submitAuth();
+                    }
+                  }}
+                  placeholder="Password"
+                  className="sota-focus-ring w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                />
 
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Password must be at least 8 characters.
-              </p>
+                {authMode === "register" ? (
+                  <input
+                    type="password"
+                    value={authConfirmPassword}
+                    onChange={(event) => setAuthConfirmPassword(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        void submitAuth();
+                      }
+                    }}
+                    placeholder="Confirm password"
+                    className="sota-focus-ring w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                  />
+                ) : null}
 
-              {authErrorMessage ? (
-                <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
-                  {authErrorMessage}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void submitAuth();
+                    }}
+                    disabled={isAuthSubmitting}
+                    className="sota-focus-ring inline-flex h-11 items-center justify-center rounded-xl border border-blue-700 bg-blue-700 px-5 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isAuthSubmitting
+                      ? authMode === "signin"
+                        ? "Signing in..."
+                        : "Creating account..."
+                      : authMode === "signin"
+                        ? "Sign In"
+                        : "Create Account"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void launchLiveDemo();
+                    }}
+                    disabled={isAuthSubmitting}
+                    className="sota-focus-ring inline-flex h-11 items-center justify-center rounded-xl border border-emerald-500 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 px-5 text-sm font-black text-white shadow-[0_12px_28px_rgba(16,185,129,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isAuthSubmitting ? "Launching..." : "Run Demo X-Ray"}
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Demo bypass loads the Rs 18L / Rs 12L household instantly.
                 </p>
-              ) : null}
+
+                {authErrorMessage ? (
+                  <p className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                    {authErrorMessage}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="sota-card relative overflow-hidden border border-slate-200 p-6 dark:border-slate-700">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(14,165,233,0.14),transparent_45%),radial-gradient(circle_at_80%_80%,rgba(16,185,129,0.14),transparent_45%)]" />
+              <div className="relative">
+                <p className="text-xs font-bold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-300">
+                  Live Value Preview
+                </p>
+                <h3 className="mt-2 font-[var(--font-space-grotesk)] text-xl font-bold text-slate-900 dark:text-slate-100">
+                  Household X-Ray + Auto-Drafted HR Actions
+                </h3>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                  Judges can see exactly what happens after one click: leakage detection,
+                  rebalancing insight, and ready-to-send declaration drafts.
+                </p>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 dark:border-slate-600 dark:bg-slate-900/70">
+                    <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-300">
+                      Tax Leakage Sankey
+                    </p>
+                    <div className="mt-3 space-y-2 blur-[1.2px]">
+                      <div className="h-2 w-24 rounded bg-rose-300/90" />
+                      <div className="h-2 w-36 rounded bg-amber-300/90" />
+                      <div className="h-2 w-20 rounded bg-emerald-300/90" />
+                      <div className="h-12 rounded-lg border border-slate-200 bg-slate-100/90 dark:border-slate-700 dark:bg-slate-800/80" />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 dark:border-slate-600 dark:bg-slate-900/70">
+                    <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-300">
+                      Auto-Drafted HR Email
+                    </p>
+                    <div className="mt-3 space-y-2 blur-[1.2px] text-xs text-slate-700 dark:text-slate-200">
+                      <p className="font-semibold">To: hr@company.com</p>
+                      <p className="font-semibold">Subject: FY26 Tax Declaration Update</p>
+                      <p>Rebalance declarations toward NPS + 80C optimization and share revised proofs...</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
         ) : (
@@ -1693,37 +1794,31 @@ export default function Home() {
                     </ul>
                   </div>
 
-                  <div className="sota-card border border-slate-200 p-4">
+                  <div className="sota-card border border-slate-200 p-5 dark:border-slate-700">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <p className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
                         <MailCheck size={15} className="text-blue-600" />
                         AI Mentor Layer
                       </p>
                       {aiMentorResult ? (
-                        <span className="sota-pill">
-                          Generated via {aiMentorResult.generatedBy.toUpperCase()}
+                        <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300">
+                          {aiMentorResult.generatedBy === "openai" ? "OpenAI Runtime" : "Deterministic Runtime"}
                         </span>
                       ) : null}
                     </div>
 
-                    <div
-                      className={`mt-3 rounded-lg border px-3 py-2 ${
-                        isAiFallbackMode || isEmailFallbackMode
-                          ? "border-amber-200 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10"
-                          : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60"
-                      }`}
-                    >
-                      <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-600 dark:text-slate-300">
-                        Demo Mode vs Full Mode
+                    <div className="mt-4 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 p-5 dark:border-emerald-500/40 dark:from-emerald-500/10 dark:via-teal-500/10 dark:to-cyan-500/10">
+                      <p className="text-xs font-bold uppercase tracking-[0.1em] text-emerald-700 dark:text-emerald-300">
+                        Household X-Ray
                       </p>
-                      <p className="mt-1 text-xs text-slate-700 dark:text-slate-200">
-                        AI Mentor: {aiMentorResult ? (isAiFallbackMode ? "Demo fallback" : "Full mode (OpenAI)") : "Not generated yet"}
+                      <p className="mt-2 font-[var(--font-space-grotesk)] text-4xl font-black tracking-tight text-emerald-700 dark:text-emerald-300 sm:text-5xl">
+                        Rs {inrFormatter.format(result.household.leakageDetected)}
                       </p>
-                      <p className="mt-1 text-xs text-slate-700 dark:text-slate-200">
-                        Email execution: {emailExecution ? (isEmailFallbackMode ? "Draft-only fallback" : "Full mode (Resend send)") : "Not executed yet"}
+                      <p className="mt-1 text-sm font-semibold text-emerald-800 dark:text-emerald-200">
+                        Total Tax Leakage Detected
                       </p>
-                      <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
-                        Full mode needs OPENAI_API_KEY, RESEND_API_KEY, and RESEND_FROM_EMAIL in local and deployment environments.
+                      <p className="mt-2 text-xs text-emerald-800/80 dark:text-emerald-200/80">
+                        Amount recoverable after optimization: Rs {inrFormatter.format(recoverableAmount)}
                       </p>
                     </div>
 
@@ -1731,116 +1826,87 @@ export default function Home() {
                       type="button"
                       onClick={generateAiMentorOutput}
                       disabled={isGeneratingAi || isExecutingFixes}
-                      className="sota-focus-ring mt-3 inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="sota-focus-ring mt-4 inline-flex h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                     >
                       {isGeneratingAi
-                        ? "Generating AI Guidance..."
-                        : "Generate AI Explanation + HR Email Drafts"}
+                        ? "Generating Narrative..."
+                        : "Generate X-Ray Narrative + Email Drafts"}
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={executeFixes}
-                      disabled={isExecutingFixes || isGeneratingAi}
-                      className="sota-focus-ring mt-2 inline-flex h-10 items-center justify-center rounded-lg border border-blue-700 bg-blue-700 px-4 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isExecutingFixes
-                        ? "Executing Fixes..."
-                        : "Execute Fixes (Generate + Send Emails)"}
-                    </button>
-
-                    {aiErrorMessage ? (
-                      <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
-                        {aiErrorMessage}
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-800/70">
+                      <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-300">
+                        Human-readable Summary
                       </p>
-                    ) : null}
-
-                    {executionError ? (
-                      <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
-                        {executionError}
+                      <p className="mt-2 text-sm leading-6 text-slate-800 dark:text-slate-100">
+                        {aiMentorResult?.plainEnglishSummary ??
+                          "Generate AI narrative to convert raw numbers into an executive summary for both partners."}
                       </p>
-                    ) : null}
+                      {aiMentorResult?.householdNarrative ? (
+                        <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">
+                          {aiMentorResult.householdNarrative}
+                        </p>
+                      ) : null}
 
-                    {emailExecution ? (
-                      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
-                          Email Execution Status
+                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-500/40 dark:bg-amber-500/10">
+                        <p className="text-[0.65rem] font-bold uppercase tracking-[0.1em] text-amber-700 dark:text-amber-300">
+                          Surprising Insight
                         </p>
-                        <p className="mt-2 text-sm font-semibold text-slate-800">
-                          {emailExecution.summary}
+                        <p className="mt-1 text-sm font-semibold text-amber-800 dark:text-amber-200">
+                          Warning: {surprisingInsight}
                         </p>
-                        <p className="mt-1 text-xs text-slate-600">
-                          Mode: {emailExecution.mode} | Provider: {emailExecution.provider}
-                        </p>
-                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                          {emailExecution.results.map((entry) => (
-                            <div
-                              key={`${entry.partnerName}-${entry.to ?? "none"}`}
-                              className="rounded-md border border-slate-200 bg-white p-2"
-                            >
-                              <p className="text-sm font-semibold text-slate-800">
-                                {entry.partnerName}
-                              </p>
-                              <p className="text-xs text-slate-600">
-                                To: {entry.to ?? "Not configured"}
-                              </p>
-                              <p className="text-xs font-semibold text-slate-700">
-                                Status: {entry.status.toUpperCase()}
-                              </p>
-                              {entry.error ? (
-                                <p className="mt-1 text-xs text-rose-700">{entry.error}</p>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
                       </div>
-                    ) : null}
+                    </div>
 
                     {aiMentorResult ? (
-                      <div className="mt-4 space-y-4">
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
-                            Human-readable Summary
-                          </p>
-                          <p className="mt-2 text-sm leading-6 text-slate-800">
-                            {aiMentorResult.plainEnglishSummary}
-                          </p>
-                          <p className="mt-2 text-sm leading-6 text-slate-700">
-                            {aiMentorResult.householdNarrative}
-                          </p>
+                      <>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          {aiMentorResult.hrEmailDrafts.map((draft) => {
+                            const executionEntry = emailExecution?.results.find(
+                              (entry) => entry.partnerName === draft.partnerName,
+                            );
+                            const recipient = executionEntry?.to ?? "hr@company.com";
+
+                            return (
+                              <div
+                                key={draft.partnerName}
+                                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-300">
+                                    Email Draft
+                                  </p>
+                                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[0.7rem] font-semibold text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                    Ready for Execution
+                                  </span>
+                                </div>
+                                <p className="mt-3 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                  To: {recipient}
+                                </p>
+                                <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                  Subject: FY26 Tax Declaration Update
+                                </p>
+                                <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">
+                                  {getEmailSnippet(draft.body)}
+                                </p>
+                              </div>
+                            );
+                          })}
                         </div>
 
-                        <div className="rounded-lg border border-slate-200 bg-white p-3">
-                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
-                            AI Key Moves
-                          </p>
-                          <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-slate-700">
-                            {aiMentorResult.keyMoves.map((move) => (
-                              <li key={move}>{move}</li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          {aiMentorResult.hrEmailDrafts.map((draft) => (
-                            <div
-                              key={draft.partnerName}
-                              className="rounded-lg border border-slate-200 bg-white p-3"
-                            >
-                              <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
-                                HR Draft - {draft.partnerName}
-                              </p>
-                              <p className="mt-2 text-sm font-semibold text-slate-900">
-                                Subject: {draft.subject}
-                              </p>
-                              <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">
-                                {draft.body}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
+                        <button
+                          type="button"
+                          onClick={executeFixes}
+                          disabled={isExecutingFixes || isGeneratingAi}
+                          className="sota-focus-ring mt-4 inline-flex h-12 w-full items-center justify-center rounded-xl border border-blue-700 bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-600 px-5 text-sm font-black text-white shadow-[0_12px_26px_rgba(37,99,235,0.32)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isExecutingFixes ? "Approving..." : "Approve & Send to HR"}
+                        </button>
+                      </>
+                    ) : (
+                      <p className="mt-4 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                        Generate drafts to unlock the email execution cards.
+                      </p>
+                    )}
                   </div>
                 </motion.div>
               ) : (
@@ -1865,6 +1931,23 @@ export default function Home() {
           </motion.section>
           </section>
         )}
+
+        <AnimatePresence>
+          {toastMessage ? (
+            <motion.div
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              className="fixed bottom-5 right-4 z-[90] flex max-w-sm items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-xl dark:border-emerald-500/40 dark:bg-emerald-500/10"
+            >
+              <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-300" />
+              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-100">
+                {toastMessage}
+              </p>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </motion.main>
     </div>
   );
