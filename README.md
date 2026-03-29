@@ -7,10 +7,10 @@ Impact Model: ./IMPACT_MODEL.md
 
 ET Co-Op is a Next.js application for two-partner household financial planning. It combines deterministic tax optimization with an AI mentor layer, HR email draft generation, and an execution workflow for sending email actions.
 
-## What This Project Does
+## About project
 
 1. Auth flow with register, sign in, session check, and logout.
-2. One-click `Try Live Demo` bypass for instant judge access with prefilled dual-income sample data.
+2. One-click `Try Live Demo` is also there if someone just want to check how platform works without doing any login
 3. Household optimization engine for tax leakage, regime recommendations, and ranked tax-saving actions.
 4. Advanced planning modules:
    1. FIRE readiness projection.
@@ -18,7 +18,6 @@ ET Co-Op is a Next.js application for two-partner household financial planning. 
    3. Life-event simulator (input-driven).
    4. Mutual fund X-Ray.
 5. AI mentor output with plain-language explanation and HR email drafts.
-6. Demo-first action flow where `Approve & Send to HR` shows a deterministic success toast for polished walkthroughs.
 
 ## Tech Stack
 
@@ -47,8 +46,6 @@ cd et-co-op
 npm ci
 ```
 
-Windows note: if PowerShell blocks npm scripts, run commands via `cmd /c npm ...`.
-
 ### 2. Configure environment variables
 
 Copy the template and edit values:
@@ -57,17 +54,11 @@ Copy the template and edit values:
 copy .env.local.example .env.local
 ```
 
-Required minimum for local app access:
-
-1. `AUTH_SESSION_SECRET` must be set to a strong random value.
-
 Optional for full features:
 
 1. `OPENAI_API_KEY` for AI responses.
 2. `RESEND_API_KEY` and `RESEND_FROM_EMAIL` for email sending.
 3. `DEMO_EMAIL_TO` or `PARTNER_A_EMAIL` and `PARTNER_B_EMAIL` for recipients.
-
-Note: In the current judge-focused UI flow, `Approve & Send to HR` is intentionally mocked to a success toast for deterministic demos. Backend email integration still exists at `POST /api/execute-fixes` for provider-enabled environments.
 
 ## Run Locally
 
@@ -77,17 +68,9 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-## Quality Checks
 
-Run all checks before pushing:
 
-```bash
-npm run lint
-npm run test
-npm run build
-```
-
-## Automated CI
+## Automated CI/CD
 
 GitHub Actions workflow is defined in `.github/workflows/ci.yml`.
 
@@ -110,50 +93,9 @@ On push and pull request, CI runs:
 
 All non-auth business endpoints are protected by session auth and rate limiting.
 
-## Testing Coverage
 
-Current test suites include:
 
-1. Optimization engine deterministic behavior.
-2. API route tests for optimize, ai-mentor, and execute-fixes.
-3. Validation tests for invalid life-event payloads.
-4. Unauthorized and rate-limit behavior for API routes.
-
-## Repository Hygiene and Security Notes
-
-1. `.env*` is ignored. Do not commit `.env.local`.
-2. `.data/` is ignored. Do not commit local runtime user data.
-3. Keep API keys and secrets only in local or deployment environment settings.
-
-## Suggested Commit Convention
-
-To keep build process traceable in history, use grouped commits:
-
-1. `feat:` application features.
-2. `test:` test additions.
-3. `ci:` workflow or automation updates.
-4. `docs:` README and setup guidance.
-
-## Troubleshooting
-
-### npm ci fails with lockfile error
-
-Run from project root where `package-lock.json` exists:
-
-```bash
-cd et-co-op
-npm ci
 ```
 
-### npm.ps1 blocked on Windows PowerShell
 
-Use cmd form:
 
-```bash
-cmd /c npm ci
-cmd /c npm run test
-```
-
-### Runtime overlay says MetaMask extension not found
-
-This is from a browser extension, not this app. Test in a clean browser profile or disable wallet extensions.
