@@ -40,6 +40,7 @@ yarn-error.log*
 ARCHITECTURE.pdf
 IMPACT_MODEL.pdf
 PITCH_VIDEO_SCRIPT.pdf
+PITCH_VIDEO_SCRIPT.md
 
 # vercel
 .vercel
