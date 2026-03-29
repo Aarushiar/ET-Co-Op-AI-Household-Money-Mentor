@@ -36,6 +36,11 @@ yarn-error.log*
 # local runtime data
 .data/
 
+# submission artifacts (local-only)
+ARCHITECTURE.pdf
+IMPACT_MODEL.pdf
+PITCH_VIDEO_SCRIPT.pdf
+
 # vercel
 .vercel
 
