@@ -10,14 +10,15 @@ ET Co-Op is a Next.js application for two-partner household financial planning. 
 ## What This Project Does
 
 1. Auth flow with register, sign in, session check, and logout.
-2. Household optimization engine for tax leakage, regime recommendations, and ranked tax-saving actions.
-3. Advanced planning modules:
+2. One-click `Try Live Demo` bypass for instant judge access with prefilled dual-income sample data.
+3. Household optimization engine for tax leakage, regime recommendations, and ranked tax-saving actions.
+4. Advanced planning modules:
    1. FIRE readiness projection.
    2. Financial health score.
    3. Life-event simulator (input-driven).
    4. Mutual fund X-Ray.
-4. AI mentor output with plain-language explanation and HR email drafts.
-5. Execute Fixes flow to send emails via Resend, with safe draft-only fallback when email is not configured.
+5. AI mentor output with plain-language explanation and HR email drafts.
+6. Demo-first action flow where `Approve & Send to HR` shows a deterministic success toast for polished walkthroughs.
 
 ## Tech Stack
 
@@ -66,19 +67,7 @@ Optional for full features:
 2. `RESEND_API_KEY` and `RESEND_FROM_EMAIL` for email sending.
 3. `DEMO_EMAIL_TO` or `PARTNER_A_EMAIL` and `PARTNER_B_EMAIL` for recipients.
 
-If Resend is not configured, Execute Fixes will remain in draft-only fallback mode by design.
-
-## Demo Mode vs Full Mode
-
-1. Demo mode (safe fallback):
-   1. Without `OPENAI_API_KEY`, AI Mentor still works using deterministic fallback guidance.
-   2. Without `RESEND_API_KEY`, Execute Fixes remains in draft-only mode and does not send emails.
-2. Full mode (live providers):
-   1. Set `OPENAI_API_KEY` to enable live OpenAI-generated mentor output.
-   2. Set `RESEND_API_KEY` and `RESEND_FROM_EMAIL` to enable live email delivery.
-3. Judge verification tip:
-   1. In the app, check the "Demo Mode vs Full Mode" panel under AI Mentor Layer.
-   2. It explicitly shows whether AI and email are running in fallback or full provider mode.
+Note: In the current judge-focused UI flow, `Approve & Send to HR` is intentionally mocked to a success toast for deterministic demos. Backend email integration still exists at `POST /api/execute-fixes` for provider-enabled environments.
 
 ## Run Locally
 
