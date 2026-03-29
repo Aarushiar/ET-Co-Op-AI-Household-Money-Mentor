@@ -1,5 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
-import { promises as fs } from "fs";
+import { constants as fsConstants, promises as fs } from "fs";
 import os from "os";
 import path from "path";
 
@@ -21,7 +21,7 @@ function getStorageCandidates(): string[] {
   const defaultDirectories = [path.join(process.cwd(), ".data")];
 
   if (process.env.VERCEL === "1") {
-    defaultDirectories.push(path.join(os.tmpdir(), "et-co-op-data"));
+    defaultDirectories.unshift(path.join(os.tmpdir(), "et-co-op-data"));
   }
 
   return configuredDirectory
@@ -50,6 +50,7 @@ async function ensureUsersFile(): Promise<string> {
   for (const directory of storageCandidates) {
     try {
       await fs.mkdir(directory, { recursive: true });
+      await fs.access(directory, fsConstants.W_OK);
       const candidateFilePath = path.join(directory, USERS_FILE_NAME);
 
       try {
